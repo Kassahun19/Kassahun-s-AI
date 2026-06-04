@@ -19,7 +19,7 @@ function getApiKey(): string {
     return envKey;
   }
   // Safe Fallback key provided by User to ensure continuous service
-  return "AIzaSyC928Q-UKJoAAtLRAmNsXqwZwp1zBKzZdg";
+  return "AIzaSyCWz3Rnjeku_51eL9XOx-0UDaL-CVr6YWc";
 }
 
 // Lazy-initialization of our GoogleGenAI client
