@@ -1,17 +1,5 @@
-import express from 'express';
-import path from 'path';
-import fs from 'fs';
-import { fileURLToPath } from 'url';
 import { GoogleGenAI } from '@google/genai';
-import dotenv from 'dotenv';
-import { createServer as createViteServer } from 'vite';
-import { kassahunKnowledgeBase } from './api/knowledge';
-
-// Load environment variables
-dotenv.config();
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+import { kassahunKnowledgeBase } from './knowledge';
 
 // Helper to dynamically get the Gemini API key, falling back to user's provided key if not in env
 function getApiKey(): string {
@@ -23,7 +11,6 @@ function getApiKey(): string {
   return "AIzaSyCWz3Rnjeku_51eL9XOx-0UDaL-CVr6YWc";
 }
 
-// Lazy-initialization of our GoogleGenAI client
 let aiInstance: GoogleGenAI | null = null;
 function getAiClient(): GoogleGenAI {
   if (!aiInstance) {
@@ -32,18 +19,13 @@ function getAiClient(): GoogleGenAI {
       apiKey: key,
       httpOptions: {
         headers: {
-          'User-Agent': 'aistudio-build',
+          'User-Agent': 'aistudio-build-vercel',
         }
       }
     });
   }
   return aiInstance;
 }
-
-const app = express();
-const PORT = 3000;
-
-app.use(express.json());
 
 // System instructions for Kassahun's AI
 const SYSTEM_INSTRUCTION = `
@@ -72,8 +54,26 @@ Key Behavior Rules:
 4. Keep the presentation premium and tech-savvy.
 `;
 
-// API Routes
-app.post('/api/chat', async (req, res) => {
+export default async function handler(req: any, res: any) {
+  // Set CORS headers so the client can query it easily
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
+  res.setHeader(
+    'Access-Control-Allow-Headers',
+    'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version'
+  );
+
+  // Handle Options preflight
+  if (req.method === 'OPTIONS') {
+    res.status(200).end();
+    return;
+  }
+
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method Not Allowed' });
+  }
+
   try {
     const { messages } = req.body;
     if (!messages || !Array.isArray(messages)) {
@@ -83,8 +83,6 @@ app.post('/api/chat', async (req, res) => {
     const client = getAiClient();
 
     // Convert client messages to Gemini content format.
-    // The client sends messages with typical chat roles {role: 'user' | 'assistant', content: string}.
-    // We map them to Gemini Format: { role: 'user' | 'model', parts: [{ text: string }] }
     const mappedContents = messages.map((msg: any) => {
       const role = msg.role === 'assistant' ? 'model' : 'user';
       return {
@@ -93,51 +91,24 @@ app.post('/api/chat', async (req, res) => {
       };
     });
 
-    console.log(`Processing chat request with ${mappedContents.length} messages...`);
+    console.log(`[Vercel Serverless] Processing chat request with ${mappedContents.length} messages...`);
 
     const response = await client.models.generateContent({
       model: 'gemini-3.5-flash',
       contents: mappedContents,
       config: {
         systemInstruction: SYSTEM_INSTRUCTION,
-        temperature: 0.2, // Low temperature for high precision and exact adherence to source sources
+        temperature: 0.2,
       }
     });
 
     const replyText = response.text || "I apologize, but I was unable to generate a response.";
-    res.json({ content: replyText });
+    res.status(200).json({ content: replyText });
 
   } catch (error: any) {
-    console.error("Gemini API error:", error);
+    console.error("[Vercel Serverless] API error:", error);
     res.status(500).json({ 
-      error: error.message || 'An error occurred while communicating with the AI service.' 
+      error: error.message || 'An error occurred while communicating with the AI service on Vercel.' 
     });
   }
-});
-
-// Setup development or production build handler
-async function setupServer() {
-  if (process.env.NODE_ENV !== 'production') {
-    console.log("Setting up Vite middleware for development...");
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: 'spa',
-    });
-    app.use(vite.middlewares);
-  } else {
-    console.log("Setting up static serving for production...");
-    const distPath = path.join(process.cwd(), 'dist');
-    app.use(express.static(distPath));
-    app.get('*', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
-    });
-  }
-
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`[Kassahun's AI] Server listening on http://localhost:${PORT}`);
-  });
 }
-
-setupServer().catch((err) => {
-  console.error("Failed to start server:", err);
-});
