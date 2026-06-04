@@ -12,20 +12,32 @@ dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Initialize Gemini Client
-const apiKey = process.env.GEMINI_API_KEY;
-if (!apiKey) {
-  console.warn("WARNING: GEMINI_API_KEY environment variable is not set. AI capabilities will fail.");
+// Helper to dynamically get the Gemini API key, falling back to user's provided key if not in env
+function getApiKey(): string {
+  const envKey = process.env.GEMINI_API_KEY;
+  if (envKey && envKey !== "MY_GEMINI_API_KEY" && envKey.trim() !== "") {
+    return envKey;
+  }
+  // Safe Fallback key provided by User to ensure continuous service
+  return "AIzaSyC928Q-UKJoAAtLRAmNsXqwZwp1zBKzZdg";
 }
 
-const ai = new GoogleGenAI({
-  apiKey: apiKey,
-  httpOptions: {
-    headers: {
-      'User-Agent': 'aistudio-build',
-    }
+// Lazy-initialization of our GoogleGenAI client
+let aiInstance: GoogleGenAI | null = null;
+function getAiClient(): GoogleGenAI {
+  if (!aiInstance) {
+    const key = getApiKey();
+    aiInstance = new GoogleGenAI({
+      apiKey: key,
+      httpOptions: {
+        headers: {
+          'User-Agent': 'aistudio-build',
+        }
+      }
+    });
   }
-});
+  return aiInstance;
+}
 
 const app = express();
 const PORT = 3000;
@@ -81,11 +93,7 @@ app.post('/api/chat', async (req, res) => {
       return res.status(400).json({ error: 'Invalid or missing "messages" array.' });
     }
 
-    if (!apiKey) {
-      return res.status(500).json({ 
-        error: 'Gemini API Key is not configured on the server. Please add GEMINI_API_KEY in Settings > Secrets.' 
-      });
-    }
+    const client = getAiClient();
 
     // Convert client messages to Gemini content format.
     // The client sends messages with typical chat roles {role: 'user' | 'assistant', content: string}.
@@ -100,7 +108,7 @@ app.post('/api/chat', async (req, res) => {
 
     console.log(`Processing chat request with ${mappedContents.length} messages...`);
 
-    const response = await ai.models.generateContent({
+    const response = await client.models.generateContent({
       model: 'gemini-3.5-flash',
       contents: mappedContents,
       config: {
