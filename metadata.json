@@ -1,0 +1,8 @@
+{
+  "name": "Kassahun's AI",
+  "description": "A highly intelligent personal assistant representing Kassahun Mulatu, his skills, projects, and the Ezana Academy digital ecosystem.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
